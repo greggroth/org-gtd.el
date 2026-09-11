@@ -48,10 +48,11 @@
   "Format SUFFIX using the current menu's count snapshot."
   (let ((label (cl-call-next-method)))
     (if org-gtd-review-show-counts
-        (format "%s (%s)" label
-                (or (alist-get (oref suffix count-key)
-                               (oref transient--prefix scope))
-                    "?"))
+        (let ((count (alist-get (oref suffix count-key)
+                                (oref transient--prefix scope))))
+          (if (eql count 0)
+              label
+            (format "%s (%s)" label (or count "?"))))
       label)))
 
 (defun org-gtd-command-center--count-specs (key)

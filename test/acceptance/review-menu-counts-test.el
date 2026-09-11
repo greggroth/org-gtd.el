@@ -26,10 +26,11 @@
   (with-current-buffer transient--buffer
     (buffer-substring-no-properties (point-min) (point-max))))
 
-(deftest review-menu-counts/zero-is-visible-and-selectable ()
+(deftest review-menu-counts/zero-is-hidden-and-selectable ()
   "An empty review keeps its shortcut and opens an empty agenda."
   (org-gtd-command-center--stuck)
-  (assert-match "Single actions (0)" (ogt-menu-count-test--text))
+  (assert-match "Single actions" (ogt-menu-count-test--text))
+  (assert-nil (string-match-p "Single actions (" (ogt-menu-count-test--text)))
   (assert-true (eq (key-binding (kbd "s")) 'org-gtd-reflect-stuck-next-action-items))
   (execute-kbd-macro (kbd "s"))
   (assert-true (derived-mode-p 'org-agenda-mode))
@@ -51,7 +52,22 @@
       (assert-match "Single actions (1)" (ogt-menu-count-test--text)))
     (transient--emergency-exit)
     (org-gtd-command-center--stuck)
-    (assert-match "Single actions (0)" (ogt-menu-count-test--text))))
+    (assert-match "Single actions" (ogt-menu-count-test--text))
+    (assert-nil (string-match-p "Single actions (" (ogt-menu-count-test--text)))))
+
+(deftest review-menu-counts/all-empty-menus-omit-counts ()
+  "Every empty review label omits its count, including the main S/M totals."
+  (dolist (prefix '(org-gtd-command-center
+                    org-gtd-command-center--stuck
+                    org-gtd-command-center--missed))
+    (funcall prefix)
+    (let ((text (ogt-menu-count-test--text)))
+      (assert-nil (string-match-p "(0)" text))
+      (assert-nil (string-match-p "(?)" text))
+      (when (eq prefix 'org-gtd-command-center)
+        (assert-match "Stuck items\\.\\.\\." text)
+        (assert-match "Missed items\\.\\.\\." text)))
+    (transient--emergency-exit)))
 
 (deftest review-menu-counts/aggregate-counts-are-view-rows ()
   "Main menu totals add constituent rows, including repeated project headings."

@@ -929,8 +929,9 @@ This section lists all interactive commands available in org-gtd, organized by w
 
 *Review counts*:
 
-Review labels show the number of matching entries, including ~(0)~ for an empty
-view. All shortcuts still work, including commands that open empty views.
+Review labels show the number of matching entries when greater than zero.
+Empty views keep their original label without a count. All shortcuts still
+work, including commands that open empty views.
 Counts appear for someday/maybe, upcoming delegated items, completed projects,
 and the stuck and missed sub-menus. Area-of-focus and completed-item reviews
 have no count because their results depend on user input.

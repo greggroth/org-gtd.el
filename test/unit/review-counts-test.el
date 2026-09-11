@@ -193,6 +193,19 @@
     (assert-match "Unreadable source" warning)
     (assert-nil scope)))
 
+(deftest review-counts/label-formats-zero-positive-and-unavailable ()
+  "Only zero loses its count suffix; positive and unknown counts stay visible."
+  (let ((suffix (org-gtd-command-center--counted-suffix
+                 :description "Review" :command 'ignore :count-key 'someday))
+        (transient--prefix (transient-prefix :scope '((someday . 0)))))
+    (assert-equal "Review" (transient-format-description suffix))
+    (oset transient--prefix scope '((someday . 3)))
+    (assert-equal "Review (3)" (transient-format-description suffix))
+    (oset transient--prefix scope nil)
+    (assert-equal "Review (?)" (transient-format-description suffix))
+    (let ((org-gtd-review-show-counts nil))
+      (assert-equal "Review" (transient-format-description suffix)))))
+
 (deftest review-counts/unopened-files-do-not-run-user-hooks ()
   "A snapshot reads unopened sources without user hooks and releases its buffers."
   (with-temp-file "/mock:/gtd/org-gtd-tasks.org"
