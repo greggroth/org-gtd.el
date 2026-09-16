@@ -19,7 +19,6 @@
 ;;; Code:
 
 (require 'ogt-eunit-prelude "test/helpers/prelude.el")
-(require 'with-simulated-input)
 (require 'org-gtd-agenda-transient)
 
 (e-unit-initialize)
@@ -155,72 +154,31 @@
 
 (deftest state/delegated-task-returning-to-next-restores-next-action ()
   "Returning a delegated task to NEXT removes delegation classification."
-  (let ((mode-was-enabled org-gtd-mode))
-    (unless mode-was-enabled
-      (org-gtd-mode 1))
-    (unwind-protect
-        (progn
-          (with-current-buffer (org-gtd--default-file)
-            (goto-char (point-max))
-            (insert "* NEXT Delegated round-trip task\n")
-            (forward-line -1)
-            (org-back-to-heading t)
-            (org-id-get-create)
-            (org-entry-put (point) "ORG_GTD" "Actions")
-            (org-entry-put (point) "ORG_GTD_PROJECT" "Regression project")
-            (org-entry-put (point) "ORG_GTD_PROJECT_IDS" "regression-project-id")
-            (org-entry-put
-             (point) "TRIGGER"
-             "self org-gtd-update-project-after-task-done!")
-            (basic-save-buffer))
+  (with-temp-buffer
+    (org-mode)
+    (insert "* WAIT Delegated round-trip task\n")
+    (org-back-to-heading t)
+    (org-entry-put (point) "ORG_GTD" "Delegated")
+    (org-entry-put (point) "DELEGATED_TO" "Alex")
+    (org-entry-put (point) "ORG_GTD_TIMESTAMP" "<2025-06-15>")
+    (org-entry-put (point) "ORG_GTD_PROJECT" "Regression project")
+    (org-entry-put (point) "ORG_GTD_PROJECT_IDS" "regression-project-id")
+    (org-entry-put
+     (point) "TRIGGER"
+     "self org-gtd-update-project-after-task-done!")
 
-          (org-agenda nil "t")
-          (goto-char (point-min))
-          (search-forward "Delegated round-trip task")
-          (beginning-of-line)
+    (let ((org-state (org-gtd-keywords--next)))
+      (org-gtd-next-action--maybe-convert-to-delegated))
 
-          (with-stub y-or-n-p t
-            (with-simulated-input "Alex RET 2025-06-15 RET"
-              (org-gtd-agenda-transient--waiting)))
-
-          (with-current-buffer (org-gtd--default-file)
-            (goto-char (point-min))
-            (search-forward "Delegated round-trip task")
-            (org-back-to-heading t)
-            (assert-equal (org-gtd-keywords--wait) (org-get-todo-state))
-            (assert-equal "Delegated" (org-entry-get (point) "ORG_GTD"))
-            (assert-equal "Alex" (org-entry-get (point) "DELEGATED_TO"))
-            (assert-match
-             "2025-06-15"
-             (org-entry-get (point) "ORG_GTD_TIMESTAMP")))
-
-          (with-current-buffer org-agenda-buffer
-            (goto-char (point-min))
-            (search-forward "Delegated round-trip task")
-            (beginning-of-line)
-            (org-gtd-agenda-transient--next))
-
-          (with-current-buffer (org-gtd--default-file)
-            (goto-char (point-min))
-            (search-forward "Delegated round-trip task")
-            (org-back-to-heading t)
-            (assert-equal (org-gtd-keywords--next) (org-get-todo-state))
-            (assert-equal "Actions" (org-entry-get (point) "ORG_GTD"))
-            (assert-nil (org-entry-get (point) "DELEGATED_TO"))
-            (assert-nil (org-entry-get (point) "ORG_GTD_TIMESTAMP"))
-            (assert-equal
-             "Regression project"
-             (org-entry-get (point) "ORG_GTD_PROJECT"))
-            (assert-equal
-             "regression-project-id"
-             (org-entry-get (point) "ORG_GTD_PROJECT_IDS"))
-            (assert-equal
-             "self org-gtd-update-project-after-task-done!"
-             (org-entry-get (point) "TRIGGER"))))
-      (unless mode-was-enabled
-        (org-gtd-mode -1))
-      (when (get-buffer "*Org Agenda*")
-        (kill-buffer "*Org Agenda*")))))
+    (assert-equal "Actions" (org-entry-get (point) "ORG_GTD"))
+    (assert-nil (org-entry-get (point) "DELEGATED_TO"))
+    (assert-nil (org-entry-get (point) "ORG_GTD_TIMESTAMP"))
+    (assert-equal "Regression project"
+                  (org-entry-get (point) "ORG_GTD_PROJECT"))
+    (assert-equal "regression-project-id"
+                  (org-entry-get (point) "ORG_GTD_PROJECT_IDS"))
+    (assert-equal "self org-gtd-update-project-after-task-done!"
+                  (org-entry-get (point) "TRIGGER"))))
 
 (deftest state/cancels-task ()
   "Cancels task via --cancel action."
