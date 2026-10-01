@@ -119,6 +119,7 @@ Reuse native Org ID lookup with a complete, private, in-memory index.
 No agenda buffer is created, and no ID cache is saved or refreshed on disk.
 Errors propagate to the menu, which can display unavailable counts."
   (let ((non-essential t)
+        (org-element-use-cache nil)
         (org-gtd-review-counts--new-buffers nil)
         (org-id-locations org-id-locations)
         (org-id-files org-id-files)
