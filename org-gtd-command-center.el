@@ -39,20 +39,36 @@
 
 ;;;; Counted descriptions
 
+(defvar org-gtd-command-center--counts nil
+  "The count job of the open review menus, or nil.
+The main menu and its sub-menus share this job, so a sub-menu reuses the
+ID index and the counts that its parent computed.")
+
+(defconst org-gtd-command-center--counted-prefixes
+  '(org-gtd-command-center
+    org-gtd-command-center--stuck
+    org-gtd-command-center--missed)
+  "Menus that show review counts.")
+
 (defclass org-gtd-command-center--counted-suffix (transient-suffix)
   ((count-key :initarg :count-key))
-  "A review suffix whose count comes from the prefix's snapshot.")
+  "A review suffix whose count comes from the menu's count job.")
 
 (cl-defmethod transient-format-description
   ((suffix org-gtd-command-center--counted-suffix))
-  "Format SUFFIX using the current menu's count snapshot."
+  "Format SUFFIX using the current count job.
+Show nothing for zero, (…) while pending and (?) after an error."
   (let ((label (cl-call-next-method)))
     (if org-gtd-review-show-counts
-        (let ((count (alist-get (oref suffix count-key)
-                                (oref transient--prefix scope))))
-          (if (eql count 0)
-              label
-            (format "%s (%s)" label (or count "?"))))
+        (let ((count (org-gtd-review-counts--total
+                      org-gtd-command-center--counts
+                      (org-gtd-command-center--count-specs
+                       (oref suffix count-key)))))
+          (pcase count
+            (0 label)
+            ('pending (format "%s (…)" label))
+            ((pred integerp) (format "%s (%d)" label count))
+            (_ (format "%s (?)" label))))
       label)))
 
 (defun org-gtd-command-center--count-specs (key)
@@ -68,29 +84,56 @@
     ('completed (list org-gtd-reflect-completed-projects-view-spec))
     (_ (list (org-gtd-reflect--stuck-view-spec key)))))
 
+(defun org-gtd-command-center--counts-updated (job)
+  "Show the new counts of JOB in the open menu.
+Warn once if JOB failed."
+  (when (eq job org-gtd-command-center--counts)
+    (when-let* ((err (org-gtd-review-counts--job-error job)))
+      (display-warning 'org-gtd
+                       (format "Review counts unavailable: %s"
+                               (error-message-string err))
+                       :warning))
+    (when (and transient--prefix
+               (memq (oref transient--prefix command)
+                     org-gtd-command-center--counted-prefixes)
+               (window-live-p transient--window))
+      (transient--redisplay))))
+
+(defun org-gtd-command-center--stop-counts ()
+  "Stop the count job when no review menu stays open."
+  (unless (or (and transient--prefix
+                   (memq (oref transient--prefix command)
+                         org-gtd-command-center--counted-prefixes))
+              (cl-some (lambda (entry)
+                         (memq (car entry)
+                               org-gtd-command-center--counted-prefixes))
+                       transient--stack))
+    (org-gtd-review-counts--cancel org-gtd-command-center--counts)
+    (setq org-gtd-command-center--counts nil)
+    (remove-hook 'transient-exit-hook #'org-gtd-command-center--stop-counts)))
+
 (defun org-gtd-command-center--setup (prefix keys)
-  "Open PREFIX with counts for KEYS computed once for this opening."
-  (let ((scope
-         (when org-gtd-review-show-counts
-           (condition-case err
-               (let* ((views (mapcar (lambda (key)
-                                      (cons key (org-gtd-command-center--count-specs key)))
-                                    keys))
-                      (counts (org-gtd-review-counts--snapshot
-                               (apply #'append (mapcar #'cdr views)))))
-                 (mapcar (lambda (view)
-                           (cons (car view)
-                                 (apply #'+ (mapcar (lambda (spec)
-                                                     (cdr (assoc spec counts)))
-                                                   (cdr view)))))
-                         views))
-             (error
-              (display-warning 'org-gtd
-                               (format "Review counts unavailable: %s"
-                                       (error-message-string err))
-                               :warning)
-              nil)))))
-    (transient-setup prefix nil nil :scope scope)))
+  "Open PREFIX now, and count the views of KEYS in short timer steps.
+A sub-menu opened from an open review menu reuses the job of that menu."
+  (unless org-gtd-review-show-counts
+    (org-gtd-review-counts--cancel org-gtd-command-center--counts)
+    (setq org-gtd-command-center--counts nil)
+    (remove-hook 'transient-exit-hook #'org-gtd-command-center--stop-counts))
+  (when org-gtd-review-show-counts
+    (let ((specs (mapcan (lambda (key)
+                           (copy-sequence (org-gtd-command-center--count-specs key)))
+                         keys)))
+      (if (and org-gtd-command-center--counts
+               (memq transient-current-command
+                     org-gtd-command-center--counted-prefixes))
+          (org-gtd-review-counts--request org-gtd-command-center--counts specs)
+        (org-gtd-review-counts--cancel org-gtd-command-center--counts)
+        (setq org-gtd-command-center--counts
+              (org-gtd-review-counts--start
+               specs #'org-gtd-command-center--counts-updated))
+        (add-hook 'transient-exit-hook #'org-gtd-command-center--stop-counts)
+        (org-gtd-review-counts--schedule org-gtd-command-center--counts))))
+  (transient-setup prefix))
 
 ;;;; Main Transient
 
